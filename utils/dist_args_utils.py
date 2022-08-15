@@ -39,6 +39,8 @@ def add_torch_distributed_w_coordinator_arguments(parser):
                         help='world-size (default: 2)')
     parser.add_argument('--data-group-size', type=int, default=1, metavar='D',
                         help='world-size (default: 1)')
+    parser.add_argument('--rank', type=int, default=0, metavar='N',
+                        help='rank of the node')
 
 
 def add_qqp_task_arguments(parser):
@@ -63,9 +65,9 @@ def add_training_model_arguments(parser):
                         help='-')
     parser.add_argument('--generate-seq-length', type=int, default=16, metavar='N',
                         help='-')
-    parser.add_argument('--embedding-dim', type=int, default=768, metavar='N',
+    parser.add_argument('--embedding-dim', type=int, default=2048, metavar='N',
                         help='-')
-    parser.add_argument('--num-layers', type=int, default=4, metavar='N',
+    parser.add_argument('--num-layers', type=int, default=2, metavar='N',
                         help='-')
     parser.add_argument('--num-heads', type=int, default=16, metavar='N',
                         help='-')
@@ -78,9 +80,9 @@ def add_training_hyper_parameter_arguments(parser):
                         help='input batch size for training (default: 100)')
     parser.add_argument('--micro-batch-size', type=int, default=4, metavar='N',
                         help='input micro batch size for training (default: 100)')
-    parser.add_argument('--lr', type=float, default=0.01, metavar='N',
+    parser.add_argument('--lr', type=float, default=0.0001, metavar='N',
                         help='-')
-    parser.add_argument('--num-iters', type=int, default=5, metavar='N',
+    parser.add_argument('--num-iters', type=int, default=4, metavar='N',
                         help='-')
 
 
@@ -111,7 +113,7 @@ def add_parallel_schema_arguments(parser):
 
 
 def get_model_arguments_str(args):
-    return '_s' + str(args.seq_length) + '_m' + str(args.embedding_dim) + '_l' + str(args.num_layers)
+    return '_s' + str(args.seq_length) + '_m' + str(args.emb_dim) + '_l' + str(args.num_layers)
 
 
 def get_dist_arguments_str(args, add_rank=True, rank=None):
@@ -170,6 +172,29 @@ def add_inference_arguments(parser):
                         help='Run model in fp16 mode.')
 
 
+def add_hybrid_inference_arguments(parser):
+    parser.add_argument('--node-type', type=str, default='CPU', metavar='S',
+                        help='-')
+    parser.add_argument('--producer-buffer-size', type=int, default=4, metavar='N',
+                        help='-')
+    parser.add_argument('--consumer-buffer-size', type=int, default=4, metavar='N',
+                        help='-')
+    parser.add_argument('--input-seq-length', type=int, default=16, metavar='N',
+                        help='-')
+    parser.add_argument('--generate-seq-length', type=int, default=16, metavar='N',
+                        help='-')
+    parser.add_argument('--stage-num-layers', type=int, default=4, metavar='N',
+                        help='-')
+    parser.add_argument('--global-num-layers', type=int, default=64, metavar='N',
+                        help='-')
+    parser.add_argument('--pp-mode', type=str, default='pipe_greedy', metavar='S',
+                        help='use which pipeline parallel mode: gpipe or 1f1b.')
+    parser.add_argument('--num-iters', type=int, default=5, metavar='N',
+                        help='-')
+    parser.add_argument('--fp16', action='store_true',
+                        help='Run model in fp16 mode.')
+
+
 def add_torch_distributed_inference_w_coordinator_arguments(parser):
     parser.add_argument('--dist-backend', type=str, default='cupy_nccl', metavar='S',
                         help='backend type for distributed PyTorch (default: cupy_nccl)')
@@ -190,22 +215,29 @@ def add_inference_details_arguments(parser):
                         help='trained model path')
     parser.add_argument('--infer-data', type=str, default='', metavar='S',
                         help='data path')
-    parser.add_argument('--top-k', type=int, default=1, metavar='S',
+    parser.add_argument('--top-k', type=int, default=None, metavar='S',
                         help='sample from top k')
-    parser.add_argument('--top-p', type=float, default=1, metavar='S',
+    parser.add_argument('--top-p', type=float, default=None, metavar='S',
                         help='sample from top p')
     parser.add_argument('--temperature', type=float, default=1, metavar='S',
                         help='temperature on logits')
-    # TODO: trivial
+    parser.add_argument('--token-micro-batch-size', type=int, default=1, metavar='S',
+                        help='token generation micro batch size.')
+    parser.add_argument('--prompt-micro-batch-size', type=int, default=1, metavar='S',
+                        help='token generation micro batch size.')
     parser.add_argument('--echo-prompt', type=lambda x: (str(x).lower() == 'true'),
                         default=False, metavar='S',
                         help='append prompt to the generated text')
-    # TODO: almost, need to fix output_token_emb overlapping issue
     parser.add_argument('--num-completions', type=int, default=1, metavar='S',
                         help='num of completions')
-    # TODO
+    parser.add_argument('--best-of', type=int, default=1, metavar='S',
+                        help='num of best of completions')
     parser.add_argument('--top-k-per-token', type=int, default=0, metavar='S',
                         help='return top k candidate for each token')
+    parser.add_argument('--budget', type=int, default=None, metavar='S',
+                        help='budget: for each batch, auto-assign max(n_seq * n_tokens)')
+    parser.add_argument('--stop', nargs='+', type=str, default=None,
+                        help='stop words')
 
 
 def get_inference_arguments_str(args, add_rank=True, rank=None):
@@ -213,8 +245,26 @@ def get_inference_arguments_str(args, add_rank=True, rank=None):
     if args.fp16:
         arg_str += '_fp16'
     arg_str += '_b' + str(args.batch_size) + '_' + str(args.micro_batch_size)
+    if hasattr(args, 'token_micro_batch_size'):
+        arg_str += '_' + str(args.token_micro_batch_size)
+
     arg_str += '_s' + str(args.input_seq_length) + '_' + str(args.generate_seq_length)
     arg_str += '_p' + str(args.pipeline_group_size)
+    if add_rank:
+        if rank is not None:
+            arg_str += '_' + str(rank)
+        else:
+            arg_str += '_' + str(args.rank)
+    return arg_str
+
+
+def get_hybrid_inference_arguments_str(args, add_rank=True, rank=None):
+    arg_str = ''
+    if args.fp16:
+        arg_str += '_fp16'
+    arg_str += '_b' + str(args.prompt_micro_batch_size) + '_' + str(args.token_micro_batch_size)
+    arg_str += '_s' + str(args.input_seq_length) + '_' + str(args.generate_seq_length)
+    arg_str += '_gpu' + str(args.pipeline_group_size) + '_cpu' + str(args.world_size-args.pipeline_group_size)
     if add_rank:
         if rank is not None:
             arg_str += '_' + str(rank)

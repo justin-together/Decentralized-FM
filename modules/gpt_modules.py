@@ -58,7 +58,7 @@ class TwoLayerMLP(nn.Module):
 
 
 class GPTTransformerLayer(nn.Module):
-    def __init__(self, model_dim, head_num, feedforward_dim=2048, layer_norm_eps=1e-5, use_checkpoint=True) -> None:
+    def __init__(self, model_dim, head_num, feedforward_dim=2048, use_checkpoint=True, layer_norm_eps=1e-5) -> None:
         super(GPTTransformerLayer, self).__init__()
         self.use_checkpoint = use_checkpoint
         self.attn = MultiHeadAttention(model_dim, head_num)
