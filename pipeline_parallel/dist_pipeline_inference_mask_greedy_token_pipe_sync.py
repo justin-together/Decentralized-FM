@@ -34,9 +34,10 @@ class DistGreedyInferenceMaskTokenPipeSync(DistGreedyInferenceTokePipeSync):
         
         super().__init__(args, device, rank=rank)
         
-        self.torch_comp_stream = torch.cuda.default_stream(device=device)
-        self.torch_recv_stream = torch.cuda.Stream(device=device, priority=-1)
-        self.torch_send_stream = torch.cuda.Stream(device=device, priority=0)
+        if self.enable_tidy_profiling:
+            self.torch_comp_stream = torch.cuda.default_stream(device=device)
+            self.torch_recv_stream = torch.cuda.Stream(device=device, priority=-1)
+            self.torch_send_stream = torch.cuda.Stream(device=device, priority=0)
         
         if self.pp_rank == self.pipeline_group_size - 1:
             ret_seq_length = self.generate_seq_length if not self.echo_prompt else self.input_seq_length + self.generate_seq_length

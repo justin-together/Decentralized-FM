@@ -1,4 +1,8 @@
-from .nccl_backend import *
+#from .nccl_backend import *
+
+from comm.comm import Communicator
+from comm.torch_comm import TorchDistCommunicator
+
 
 _DATA_PARALLEL_COMM = None
 _DATA_PARALLEL_RANK = None
@@ -13,7 +17,7 @@ _TENSOR_PARALLEL_RANK = None
 _TENSOR_PARALLEL_WORLD_SIZE = None
 
 
-def get_data_parallel_comm() -> NCCLCommunicator:
+def get_data_parallel_comm() -> Communicator:
     assert _DATA_PARALLEL_COMM is not None
     return _DATA_PARALLEL_COMM
 
@@ -28,7 +32,7 @@ def get_data_parallel_world_size() -> int:
     return _DATA_PARALLEL_WORLD_SIZE
 
 
-def get_pipeline_parallel_comm() -> NCCLCommunicator:
+def get_pipeline_parallel_comm() -> Communicator:
     assert _PIPELINE_PARALLEL_COMM is not None
     return _PIPELINE_PARALLEL_COMM
 
@@ -43,7 +47,7 @@ def get_pipeline_parallel_world_size() -> int:
     return _PIPELINE_PARALLEL_WORLD_SIZE
 
 
-def get_megatron_tensor_parallel_comm() -> NCCLCommunicator:
+def get_megatron_tensor_parallel_comm() -> Communicator:
     assert _TENSOR_PARALLEL_COMM is not None
     return _TENSOR_PARALLEL_COMM
 
@@ -76,13 +80,15 @@ def _init_communicators(world_size, data_group_size, pipeline_group_size, rank, 
         # We use pipeline parallel by default.
         _PIPELINE_PARALLEL_WORLD_SIZE = pipeline_group_size
         _PIPELINE_PARALLEL_RANK = rank % pipeline_group_size
-        _PIPELINE_PARALLEL_COMM = NCCLCommunicator(_PIPELINE_PARALLEL_RANK, cuda_id, pipeline_group_size,
-                                                   "pipeline_group_" + str(rank // pipeline_group_size))
+        _PIPELINE_PARALLEL_COMM = TorchDistCommunicator(_PIPELINE_PARALLEL_RANK, pipeline_group_size, "tcp://127.0.0.1:9000")
+      #  _PIPELINE_PARALLEL_COMM = NCCLCommunicator(_PIPELINE_PARALLEL_RANK, cuda_id, pipeline_group_size,
+      #                                             "pipeline_group_" + str(rank // pipeline_group_size))
         if data_group_size != 1:
             _DATA_PARALLEL_WORLD_SIZE = data_group_size
             _DATA_PARALLEL_RANK = rank // pipeline_group_size
-            _DATA_PARALLEL_COMM = NCCLCommunicator(_DATA_PARALLEL_RANK, cuda_id, data_group_size,
-                                                   "data_group_" + str(rank % pipeline_group_size))
+            _PIPELINE_PARALLEL_COMM = TorchDistCommunicator(_DATA_PARALLEL_RANK, data_group_size, "tcp://127.0.0.1:9000")
+      #      _DATA_PARALLEL_COMM = NCCLCommunicator(_DATA_PARALLEL_RANK, cuda_id, data_group_size,
+      #                                             "data_group_" + str(rank % pipeline_group_size))
     # elif args.world_size == args.data_group_size * args.tensor_group_size:
     #    global _DATA_PARALLEL_COMM
     #    global _TENSOR_PARALLEL_COMM
@@ -111,17 +117,18 @@ def _init_inference_communicators(pipeline_group_size, rank, cuda_id):
     global _PIPELINE_PARALLEL_WORLD_SIZE
     _PIPELINE_PARALLEL_WORLD_SIZE = pipeline_group_size
     _PIPELINE_PARALLEL_RANK = rank % pipeline_group_size
-    _PIPELINE_PARALLEL_COMM = NCCLCommunicator(_PIPELINE_PARALLEL_RANK, cuda_id, pipeline_group_size, "pipeline_group")
+    _PIPELINE_PARALLEL_COMM = TorchDistCommunicator(_PIPELINE_PARALLEL_RANK, pipeline_group_size, "tcp://127.0.0.1:9000")
+    # NCCLCommunicator(_PIPELINE_PARALLEL_RANK, cuda_id, pipeline_group_size, "pipeline_group")
 
 
 # Communicator for training
 def init_communicators(args):
-    default_init(args)
+    #default_init(args)
     _init_communicators(args.world_size, args.data_group_size, args.pipeline_group_size, args.rank, args.cuda_id)
 
 
 def init_inference_communicators(args):
-    default_init(args)
+    #default_init(args)
     _init_inference_communicators(args.pipeline_group_size, args.rank, args.cuda_id)
 
 

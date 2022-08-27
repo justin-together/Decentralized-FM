@@ -60,7 +60,15 @@ class DummyRequestProcessor:
     def get_dataloader(self, batch_size, num_workers=0):
         
         dataset = JsonDataset(
-            ['you are', 'Translate to French: I am a student.']*1000, 
+            [
+              'you are',
+              'Translate to French: I am a student.',
+              "George Washington was the first",
+              "Correlation does not imply",
+              "Rio Del Mar is",
+              "Welcome to the latest news",
+            ]*2,
+
             self.tokenizer, batch_size=batch_size,
         )
         

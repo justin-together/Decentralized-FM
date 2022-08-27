@@ -2,10 +2,10 @@ import os
 import json
 from datetime import datetime
 from comm.comm_utils import *
-from comm.hybrid_comm_utils import *
+# from comm.hybrid_comm_utils import *
 
 from task_datasets.inference_data import get_tokenizer
-from flask import Flask, request
+#from flask import Flask, request
 import threading
 import socket
 import time
@@ -131,7 +131,7 @@ def distributed_hybrid_inference_foo_iter(args, pipeline, device, request_proces
         averaged_time = total_time / (args.num_iters - 1 + 1e-9)
     return averaged_time
 
-
+""""
 def distributed_inference_mask_server(args, pipeline, device):
     
     tokenizer = get_tokenizer(args)
@@ -295,3 +295,4 @@ def distributed_inference_mask_server(args, pipeline, device):
             current_iter_time = pipeline.inference_batch(input_ids, attention_mask=attention_mask)
         
     return 0
+    """

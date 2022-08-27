@@ -6,7 +6,7 @@ from comm.comm_utils import *
 from task_datasets.inference_data import get_request_processor
 from pipeline_parallel.dist_pp_utils import *
 from transformers import AutoTokenizer
-
+import torch
 
 def main():
     parser = argparse.ArgumentParser(description='Inference Runner')

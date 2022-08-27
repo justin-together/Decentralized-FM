@@ -201,7 +201,7 @@ class DistGreedyInferenceTokePipeSync:
             self.cached_attention.append([None for _ in range(self.seq_num)])
 
     def _merge_cached_seqs_and_attentions(self):
-        self.merge_switch_start_event.record()
+        #self.merge_switch_start_event.record()
         for layer_index in range(self.num_layers):
             key = torch.split(torch.cat([kv[0] for kv in self.cached_attention[layer_index]], dim=0),
                               self.token_micro_batch_size, dim=0)
@@ -225,7 +225,7 @@ class DistGreedyInferenceTokePipeSync:
         if self.pp_rank == self.pipeline_group_size - 1:
             for i in range(self.token_micro_batch_num):
                 self._generate_new_token(i)
-        self.merge_switch_end_event.record()
+        #self.merge_switch_end_event.record()
         if self.enable_tidy_profiling:
             torch.cuda.synchronize()
             comp_slot = self.merge_switch_start_event.elapsed_time(
