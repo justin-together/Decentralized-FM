@@ -1,2 +1,0 @@
-This is a directory to store submitted bsub file.
-It seems that the bsub file cannot take arguments. -.-!

@@ -4,12 +4,15 @@ from pipeline_parallel.dist_pp_utils import get_pp_inference_module
 from utils.dist_args_utils import *
 from utils.dist_inference_utils import *
 from comm.comm_utils import *
-from coordinator.euler.coordinate_client import CoordinatorInferenceClient
+from coordinator.coordinate_client import *
+from transformers import AutoTokenizer
+from task_datasets.inference_data import get_request_processor
+
 
 def main():
     parser = argparse.ArgumentParser(description='Inference Runner with coordinator.')
     add_device_arguments(parser)
-    add_torch_distributed_inference_w_euler_coordinator_arguments(parser)
+    add_torch_distributed_inference_w_coordinator_arguments(parser)
     add_inference_arguments(parser)
     add_inference_details_arguments(parser)
     parser.add_argument('--seed', type=int, default=1, metavar='S',
@@ -33,20 +36,30 @@ def main():
 
     init_inference_communicators_with_coordinator(args, prime_ip, rank, port=port)
 
+    if get_pipeline_parallel_rank() == 0 or True:
+
+        request_processor = get_request_processor(args)
+        request_processor.set_arguments(args)
+
+    else:
+        tokenizer = None
+        request_processor = None
+        print('warning: todo: arguments specified in the request will not take effect.')
+
     pipe = get_pp_inference_module(args, device, rank=rank)
 
     if args.profiling == 'no-profiling':
-        avg_iter_time = distributed_inference_mask_server(args, pipe, device)
+        avg_iter_time = distributed_inference_mask_iter(args, pipe, device, request_processor)
     else:
         prefix = './trace_json/inference_' + args.pp_mode
         trace_file = prefix + get_inference_arguments_str(args, rank=rank) + '_' + args.profiling + '_' + args.trace_postfix + \
                      '.json'
         if args.profiling == 'tidy_profiling':
-            avg_iter_time = distributed_inference_mask_server(args, pipe, device)
+            avg_iter_time = distributed_inference_mask_iter(args, pipe, device, request_processor)
             pipe.export_profiling_result(filename=trace_file)
         elif args.profiling == 'pytorch_profiling':
             with profiler.profile(profile_memory=True, use_cuda=args.use_cuda) as prof:
-                avg_iter_time = distributed_inference_mask_server(args, pipe, device)
+                avg_iter_time = distributed_inference_mask_iter(args, pipe, device, request_processor)
             print(prof.key_averages().table())
             prof.export_chrome_trace(trace_file)
         else:

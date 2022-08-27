@@ -6,13 +6,13 @@ from pipeline_parallel.dist_pp_utils import get_pp_module
 from utils.dist_args_utils import *
 from utils.dist_train_utils import *
 from comm.comm_utils import *
-from coordinator.euler.coordinate_client import CoordinatorTrainClient
+from coordinator.coordinate_client import *
 
 
 def main():
     parser = argparse.ArgumentParser(description='Gpipe-GPT3')
     add_device_arguments(parser)
-    add_torch_distributed_w_euler_coordinator_arguments(parser)
+    add_torch_distributed_w_coordinator_arguments(parser)
     add_training_model_arguments(parser)
     add_qqp_task_arguments(parser)
     add_training_hyper_parameter_arguments(parser)

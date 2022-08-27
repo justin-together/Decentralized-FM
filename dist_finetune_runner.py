@@ -1,7 +1,6 @@
 import argparse
 import time
 import random
-import os
 import numpy as np
 import torch
 import torch.autograd.profiler as profiler
@@ -9,58 +8,21 @@ from task_datasets.wikitext import get_wikitext_train_data_loader, get_wikitext_
 from task_datasets.wiki103 import get_wiki103_train_data_loader, get_wiki103_test_data_loader
 from task_datasets.arxiv21 import get_arxiv21_train_data_loader, get_arxiv21_test_data_loader
 from task_datasets.openwebtext import get_openwebtext_train_data_loader
-from task_datasets.fm_in_context_eval_data import get_fm_in_context_eval_train_data_loader
+from modules.hf_gpt2_train_module import GPTConfig
 from pipeline_parallel.dist_pp_utils import get_pp_finetune_module as get_pp_module
 
-from transformers import AutoTokenizer, AutoConfig
+from transformers import AutoTokenizer
 
 try:
     import wandb
 except Exception as e:
     wandb = None
-# wandb = None
+wandb = None
 
 from utils.dist_args_utils import *
 from utils.dist_train_utils import *
 from utils.dist_test_utils import *
 from comm.comm_utils import *
-
-def save_checkpoint(args, pipe, ckpt_path):
-    
-    _layer_begin = get_pipeline_parallel_rank() * args.num_layers
-    _layer_end = min(_layer_begin + args.num_layers, args.max_layers)
-    
-    if get_pipeline_parallel_rank()  == 0:
-        torch.save(
-            pipe.model.model[0].state_dict(),
-            os.path.join(ckpt_path, f'pytorch_embs.pt')
-        )
-        
-        for i in range(_layer_begin, _layer_end):
-            print('saving layer', i)
-            torch.save(
-                pipe.model.model[i+1-_layer_begin].state_dict(),
-                os.path.join(ckpt_path, f'pytorch_{i}.pt')
-            )
-            
-    elif get_pipeline_parallel_rank()  == args.pipeline_group_size - 1:
-        for i in range(_layer_begin, _layer_end):
-            print('saving layer', i)
-            torch.save(
-                pipe.model.model[i-_layer_begin].state_dict(),
-                os.path.join(ckpt_path, f'pytorch_{i}.pt')
-            )
-        torch.save(
-            pipe.model.model[-1].state_dict(),
-            os.path.join(ckpt_path, f'pytorch_lm_head.pt')
-        )
-    else:
-        for i in range(_layer_begin, _layer_end):
-            print('saving layer', i)
-            torch.save(
-                pipe.model.model[i-_layer_begin].state_dict(),
-                os.path.join(ckpt_path, f'pytorch_{i}.pt')
-            )
 
 def train_loop(args, pipe, device, train_data_loader, test_data_loader):
     
@@ -74,15 +36,6 @@ def train_loop(args, pipe, device, train_data_loader, test_data_loader):
         if get_pipeline_parallel_rank()  == args.pipeline_group_size - 1:
             if wandb is not None:
                 wandb.log({'epoch': e}, step=pipe.global_step)
-                
-        if args.model_save_path is not None:
-            ckpt_path = os.path.join(args.model_save_path, f'ckpt_epoch_{e}')
-            try:
-                os.makedirs(ckpt_path)
-            except Exception as e:
-                pass
-                
-            save_checkpoint(args, pipe, ckpt_path)
             
 
 def main():
@@ -94,7 +47,23 @@ def main():
     add_training_hyper_parameter_arguments(parser)
     add_mixed_precision_arguments(parser)
     add_parallel_schema_arguments(parser)
-    add_finetuning_model_arguments(parser)
+    parser.add_argument('--model-name', type=str, default='gpt2', metavar='S',
+                        help='model name or path')
+    parser.add_argument('--tokenizer-name', type=str, default='gpt2', metavar='S',
+                        help='tokenizer name or path')
+    parser.add_argument('--task-name', type=str, default='wikitext', metavar='S',
+                        help='task name')
+    parser.add_argument('--task-type', type=str, default='language_model', metavar='S',
+                        help='task typw')
+    parser.add_argument('--n-epochs', type=int, default=10, help='-')
+    parser.add_argument('--warmup-epochs', type=int, default=1, help='-')
+    parser.add_argument('--warmup-steps', type=int, default=None, help='-')
+    parser.add_argument('--total-steps', type=int, default=None, help='-')
+    parser.add_argument('--load-pretrained-model', 
+                        type=lambda x: x.lower()=='true', default=True, metavar='S',
+                        help='load pretrained model or not.')
+    parser.add_argument('--seed', type=int, default=1, metavar='S',
+                        help='random seed (default: 1)')
     parser.add_argument('--profiling', type=str, default='tidy_profiling', metavar='S',
                         help='enable which profiling? default: tidy mode')
     parser.add_argument('--trace-postfix', type=str, default='default', metavar='S',
@@ -112,12 +81,27 @@ def main():
 
     init_communicators(args)
     
-    config = AutoConfig.from_pretrained(args.model_name)
-    for k in config.__dict__:
-        if '_pdrop' in k or '_dropout' in k:
-            config.__dict__[k] = args.dropout
+    config = GPTConfig.from_pretrained(args.model_name)
+#     config.attn_pdrop = 0.0
+#     config.embd_pdrop = 0.0
+#     config.resid_pdrop = 0.0
+#     config.summary_first_dropout = 0.0
     
-    # config.n_layer = args.num_layers
+    config.n_layer = args.num_layers
+#     if get_pipeline_parallel_rank() == args.pipeline_group_size-1:
+#         args.num_layers -= 3
+#         config.n_layer = args.num_layers  # num_layers per node
+#     elif get_pipeline_parallel_rank() == args.pipeline_group_size-4:
+#         args.num_layers += 1
+#         config.n_layer = args.num_layers  # num_layers per node
+#     elif get_pipeline_parallel_rank() == args.pipeline_group_size-3:
+#         args.num_layers += 1
+#         config.n_layer = args.num_layers  # num_layers per node
+#     elif get_pipeline_parallel_rank() == args.pipeline_group_size-2:
+#         args.num_layers += 1
+#         config.n_layer = args.num_layers  # num_layers per node
+#     else:
+#         config.n_layer = args.num_layers  # num_layers per node
     
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name)
     tokenizer.model_max_length = args.seq_length
@@ -143,9 +127,6 @@ def main():
     elif args.task_name == 'openwebtext':
         train_data_loader = get_openwebtext_train_data_loader(args, tokenizer)
         test_data_loader = get_wikitext_test_data_loader(args, tokenizer)
-    elif args.task_name == 'fm_in_context_eval':
-        train_data_loader = get_fm_in_context_eval_train_data_loader(args, tokenizer)
-        test_data_loader = None
     else:
         raise Exception('unknown task.')
         
@@ -164,10 +145,36 @@ def main():
 #     random.seed(args.seed)
 #     np.random.seed(args.seed)
     
-    print('initializing pipeline')
     pipe = get_pp_module(args, config, device, use_dp)
     
-    print('starting train loop....')
+    if args.load_pretrained_model:
+        if get_pipeline_parallel_rank() == 0:
+            pipe.model.model[0].load_state_dict(
+                torch.load(f'{args.model_name}/pytorch_embs.pt')
+            )
+            for i in range(len(pipe.model.model)-1):
+                print(i)
+                pipe.model.model[i+1].load_state_dict(
+                    torch.load(f'{args.model_name}/pytorch_{i}.pt')
+                )
+        elif get_pipeline_parallel_rank() == args.pipeline_group_size-1:
+            _i = get_pipeline_parallel_rank() * args.num_layers
+            for i in range(len(pipe.model.model)-1):
+                print(_i + i)
+                pipe.model.model[i].load_state_dict(
+                    torch.load(f'{args.model_name}/pytorch_{_i + i}.pt')
+                )
+            pipe.model.model[-1].load_state_dict(
+                torch.load(f'{args.model_name}/pytorch_lm_head.pt')
+            )
+        else:
+            _i = get_pipeline_parallel_rank() * args.num_layers
+            for i in range(len(pipe.model.model)):
+                print(_i + i)
+                pipe.model.model[i].load_state_dict(
+                    torch.load(f'{args.model_name}/pytorch_{_i + i}.pt')
+                )      
+
     if args.profiling == 'no-profiling':
         train_loop(args, pipe, device, train_data_loader, test_data_loader)
     else:

@@ -1,1 +1,0 @@
-This is a folder to cache VM exe logs.
